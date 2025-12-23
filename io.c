@@ -37,7 +37,7 @@ unsigned int gpio_call(unsigned int pin_number, unsigned int value, unsigned int
 
     unsigned int curval = mmio_read(reg);
     curval &= ~(field_mask << shift);
-    curval != value << shift;
+    curval |= value << shift;
     mmio_write(reg, curval);
 
     return 1;
@@ -56,10 +56,10 @@ unsigned int gpio_pull(unsigned int pin_number, unsigned int value){
 }
 
 unsigned int gpio_function(unsigned int pin_number, unsigned int value){
-    gpio_call(pin_number, value, GPFSEL0, 3, GPIO_MAX_PIN);
+    return gpio_call(pin_number, value, GPFSEL0, 3, GPIO_MAX_PIN);
 }
 
-void gpio_useAsALT5(unsigned int pin_number){
+void gpio_useAsAlt5(unsigned int pin_number){
     gpio_pull(pin_number, Pull_None);
     gpio_function(pin_number, GPIO_FUNCTION_ALT5);
 }
@@ -82,7 +82,7 @@ enum{
     UART_MAX_QUEUE = 16 * 1024
 };
 
-#define AUX_MAX_BAUD(baud) ((AUX_UART_CLOCK / (8 * baud)) - 1)
+#define AUX_MU_BAUD(baud) ((AUX_UART_CLOCK / (8 * baud)) - 1)
 
 void uart_init(){
     mmio_write(AUX_ENABLES, 1);
@@ -98,7 +98,7 @@ void uart_init(){
     mmio_write(AUX_MU_CNTL_REG, 3); // enabling RX and TX
 }
 
-unsigned int uart_isWriteByteRead(){
+unsigned int uart_isWriteByteReady(){
     return mmio_read(AUX_MU_LSR_REG) & 0x20; // checks bit 5, masks out all others, checks if TX is ready
 }
 
