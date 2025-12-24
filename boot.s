@@ -17,13 +17,13 @@ load:                       // now on main core
     mov sp, x1              // set stack pointer to _start
 
     ldr x1, = __bss_start   // start address
-    ldr w2, = __bss_size    // size of section
+    ldr x2, = __bss_size    // size of section
 
 clear:
-    cbz w2, done            // if size is 0, move on -> want to clear bss to 0 - random memory in RAM
+    cbz x2, done            // if size is 0, move on -> want to clear bss to 0 - random memory in RAM
     str xzr, [x1], #8       // store 0 in x1 and increment by 8 bytes - 64 bit reg
-    sub w2, w2, #1          // decrement size of bss by 1
-    cbnz w2, clear          // if size not zero, repeat
+    sub x2, x2, #1          // decrement size of bss by 1
+    cbnz x2, clear          // if size not zero, repeat
 
 done:
     bl  main                // jump to main() function in C

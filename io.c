@@ -10,11 +10,15 @@ enum{
 
 enum{
     GPIO_MAX_PIN = 53,
-    GPIO_FUNCTION_ALT5 = 2
+    GPIO_FUNCTION_OUT = 1,
+    GPIO_FUNCTION_ALT5 = 2,
+    GPIO_FUNCTION_ALT3 = 7
 };
 
 enum{
-    Pull_None = 0
+    Pull_None = 0,
+    Pull_Up = 1,
+    Pull_Down = 2
 };
 
 void mmio_write(long reg, unsigned int val){
@@ -64,6 +68,24 @@ void gpio_useAsAlt5(unsigned int pin_number){
     gpio_function(pin_number, GPIO_FUNCTION_ALT5);
 }
 
+void gpio_useAsAlt3(unsigned int pin_number){
+    gpio_pull(pin_number, Pull_None);
+    gpio_function(pin_number, GPIO_FUNCTION_ALT3);
+}
+
+void gpio_initOutputPinWithPullNone(unsigned int pin_number){
+    gpio_pull(pin_number, Pull_None);
+    gpio_function(pin_number, GPIO_FUNCTION_OUT);
+}
+
+void gpio_setPinOutputBool(unsigned int pin_number, unsigned int onOrOff){
+    if(onOrOff){
+        gpio_set(pin_number, 1);
+    }
+    else{
+        gpio_clear(pin_number, 1);
+    }
+}
 
 // UART set up
 
@@ -84,6 +106,10 @@ enum{
 
 #define AUX_MU_BAUD(baud) ((AUX_UART_CLOCK / (8 * baud)) - 1)
 
+unsigned char uart_output_queue[UART_MAX_QUEUE];
+unsigned int uart_output_queue_read = 0;
+unsigned int uart_output_queue_write = 0;
+
 void uart_init(){
     mmio_write(AUX_ENABLES, 1);
     mmio_write(AUX_MU_IER_REG, 0);
@@ -102,14 +128,67 @@ unsigned int uart_isWriteByteReady(){
     return mmio_read(AUX_MU_LSR_REG) & 0x20; // checks bit 5, masks out all others, checks if TX is ready
 }
 
+unsigned int uart_isReadByteReady(){
+    return mmio_read(AUX_MU_LSR_REG) & 0x01;
+}
+
 void uart_writeByteBlockingActual(unsigned char ch){
     while(!uart_isWriteByteReady()){}
     mmio_write(AUX_MU_IO_REG, (unsigned int)ch);
 }
 
+unsigned int uart_isOutputQueueEmpty(){
+    return uart_output_queue_read == uart_output_queue_write;
+}
+
+unsigned int uart_readByte(){
+    while(!uart_isReadByteReady()){};
+    return (unsigned char)mmio_read(AUX_MU_IO_REG);
+}
+
+void uart_loadOutputFifo(){
+    while(!uart_isOutputQueueEmpty() && uart_isWriteByteReady()){
+        uart_writeByteBlockingActual(uart_output_queue[uart_output_queue_read]);
+        uart_output_queue_read = (uart_output_queue_read + 1) & (UART_MAX_QUEUE - 1); // ensures no overflow
+    }
+}
+
+void uart_writeByteBlocking(unsigned char ch){
+    unsigned int next = (uart_output_queue_read + 1) & (UART_MAX_QUEUE - 1);
+
+    while(next == uart_output_queue_read){
+        uart_loadOutputFifo();
+    }
+
+    uart_output_queue[uart_output_queue_write] = ch;
+    uart_output_queue_write = next;
+}
+
 void uart_writeText(char* buffer){
     while(*buffer){
-        if(*buffer == '\n') uart_writeByteBlockingActual('\r');
-        uart_writeByteBlockingActual(*buffer++);
+        if(*buffer == '\n'){
+            uart_writeByteBlocking('\r');
+        }
+        uart_writeByteBlocking(*buffer++);
+    }
+}
+
+void uart_drainOutputQueue(){
+    while(!uart_isOutputQueueEmpty()){
+        uart_loadOutputFifo();
+    }
+}
+
+void uart_update(){
+    uart_loadOutputFifo();
+
+    if(uart_isWriteByteReady()){
+        unsigned char ch = uart_readByte();
+        if(ch == '\r'){
+            uart_writeText("\n");
+        }
+        else{
+            uart_writeByteBlockingActual(ch);
+        }
     }
 }
